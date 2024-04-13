@@ -11,6 +11,10 @@ pub mod ledger;
 pub mod specter;
 pub mod utils;
 
+pub use bitcoin;
+pub use tokio;
+pub use serialport;
+
 use async_trait::async_trait;
 use bitcoin::{
     bip32::{DerivationPath, Fingerprint, Xpub},
