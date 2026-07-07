@@ -12,6 +12,10 @@ repository.workspace = true
 name = "hwi"
 path = "src/bin/hwi.rs"
 
+[[bin]]
+name = "hwi_fetch"
+path = "src/bin/hwi_fetch.rs"
+
 [dependencies]
 clap = { version = "4.4.7", features = ["derive"] }
 bitcoin = "0.32"
