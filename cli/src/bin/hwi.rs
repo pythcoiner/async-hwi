@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 const WALLET_REGISTER_ABOUT: &str = "register wallet from persisted state or --name and --policy";
 const WALLET_IS_REGISTERED_ABOUT: &str =
     "check wallet registration from persisted state or wallet name and policy";
+const PSBT_SIGN_ABOUT: &str = "sign psbt from --psbt or --psbt-file";
 
 fn persist_long_about(command_help: &str) -> String {
     format!(
@@ -92,10 +93,19 @@ enum DeviceCommands {
 
 #[derive(Debug, Subcommand)]
 enum PsbtCommands {
+    #[command(
+        about = PSBT_SIGN_ABOUT,
+        long_about = persist_long_about(
+            "Sign psbt from --psbt or --psbt-file. Use persisted state or wallet name and policy to provide wallet metadata"
+        )
+    )]
     Sign {
         /// psbt to sign
         #[arg(long, value_parser = clap::value_parser!(bitcoin::psbt::Psbt))]
-        psbt: Psbt,
+        psbt: Option<Psbt>,
+        /// read psbt from file
+        #[arg(long)]
+        psbt_file: Option<PathBuf>,
         /// wallet name
         #[arg(long)]
         wallet_name: Option<String>,
@@ -334,11 +344,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
             output_lines(output.as_ref(), &res)?;
         }
         Commands::Psbt(PsbtCommands::Sign {
-            mut psbt,
+            psbt,
+            psbt_file,
             wallet_name,
             wallet_policy,
             hmac,
         }) => {
+            let mut psbt = resolve_psbt(psbt, psbt_file)?;
             let args = WalletArgs {
                 name: wallet_name,
                 descriptor: wallet_policy,
@@ -619,6 +631,14 @@ fn wallet_name_for_device(kind: DeviceKind, name: Option<&String>) -> Result<&st
             .map(String::as_str)
             .ok_or_else(|| invalid_input("wallet name is required")),
         DeviceKind::BitBox02 | DeviceKind::Specter | DeviceKind::SpecterSimulator => Ok(""),
+    }
+}
+
+fn resolve_psbt(psbt: Option<Psbt>, psbt_file: Option<PathBuf>) -> Result<Psbt, Box<dyn Error>> {
+    match (psbt, psbt_file) {
+        (Some(_), Some(_)) | (None, None) => Err(invalid_input("use either --psbt or --psbt-file")),
+        (Some(psbt), None) => Ok(psbt),
+        (None, Some(path)) => Ok(std::fs::read_to_string(path)?.trim_end().parse()?),
     }
 }
 

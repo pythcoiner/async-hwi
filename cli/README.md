@@ -92,7 +92,7 @@ $ hwi psbt -h
 Usage: hwi psbt [OPTIONS] <COMMAND>
 
 Commands:
-  sign
+  sign  sign psbt from --psbt or --psbt-file
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -102,15 +102,18 @@ Options:
 
 ```shell
 $ hwi psbt sign -h
-Usage: hwi psbt sign [OPTIONS] --psbt <PSBT>
+sign psbt from --psbt or --psbt-file
+
+Usage: hwi psbt sign [OPTIONS]
 
 Options:
       --psbt <PSBT>                    psbt to sign
+      --psbt-file <PSBT_FILE>          read psbt from file
       --wallet-name <WALLET_NAME>      wallet name
       --wallet-policy <WALLET_POLICY>  wallet policy
       --hmac <HMAC>                    proof of registration, ledger only
   -o, --output <OUTPUT>                write command output to file instead of stdout
-  -h, --help                           Print help
+  -h, --help                           Print help (see more with '--help')
 ```
 
 ```shell
