@@ -37,6 +37,7 @@ commands=(
     "wallet"
     "wallet register"
     "wallet is-registered"
+    "persist"
     "xpub"
     "xpub get"
 )
@@ -53,8 +54,8 @@ for command in "${commands[@]}"; do
     if [ "$command" != "" ]; then
         printf ' %s' "$command" >> "$help_tmp"
     fi
-    printf ' --help\n' >> "$help_tmp"
-    "$bin" "${args[@]}" --help >> "$help_tmp"
+    printf ' -h\n' >> "$help_tmp"
+    "$bin" "${args[@]}" -h >> "$help_tmp"
     printf '```\n' >> "$help_tmp"
 
     if [ "$command" != "${commands[-1]}" ]; then
@@ -66,11 +67,17 @@ done
 # the template.
 awk '
     $0 == "{{CLI_HELP}}" {
-        while ((getline line < help) > 0) print line
+        while ((getline line < help) > 0) {
+            sub(/[[:blank:]]+$/, "", line)
+            print line
+        }
         close(help)
         next
     }
-    { print }
+    {
+        sub(/[[:blank:]]+$/, "")
+        print
+    }
 ' help="$help_tmp" "$template" > "$tmp"
 
 if [ "${1:-}" = "--check" ]; then

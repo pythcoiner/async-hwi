@@ -15,6 +15,16 @@ requirements:
 
 {{CLI_HELP}}
 
+## Persistence
+
+Persistence is disabled by default. Enable it with:
+
+```shell
+$ hwi persist enable
+```
+
+On Linux, async-hwi stores state under `~/.async-hwi`. On macOS and Windows, it uses the platform config directory.
+
 ## Examples
 
 ```shell

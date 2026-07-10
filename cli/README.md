@@ -14,17 +14,18 @@ requirements:
 ## Usage
 
 ```shell
-$ hwi --help
+$ hwi -h
 HWI CLI
 
 Usage: hwi [OPTIONS] <COMMAND>
 
 Commands:
-  address  
-  device   
-  psbt     
-  wallet   
-  xpub     
+  address
+  device
+  psbt
+  wallet
+  persist
+  xpub
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -36,11 +37,11 @@ Options:
 ```
 
 ```shell
-$ hwi address --help
+$ hwi address -h
 Usage: hwi address [OPTIONS] <COMMAND>
 
 Commands:
-  display  
+  display
   help     Print this message or the help of the given subcommand(s)
 
 Options:
@@ -49,7 +50,7 @@ Options:
 ```
 
 ```shell
-$ hwi address display --help
+$ hwi address display -h
 Usage: hwi address display [OPTIONS]
 
 Options:
@@ -63,11 +64,11 @@ Options:
 ```
 
 ```shell
-$ hwi device --help
+$ hwi device -h
 Usage: hwi device [OPTIONS] <COMMAND>
 
 Commands:
-  list  
+  list
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -76,7 +77,7 @@ Options:
 ```
 
 ```shell
-$ hwi device list --help
+$ hwi device list -h
 Usage: hwi device list [OPTIONS]
 
 Options:
@@ -85,11 +86,11 @@ Options:
 ```
 
 ```shell
-$ hwi psbt --help
+$ hwi psbt -h
 Usage: hwi psbt [OPTIONS] <COMMAND>
 
 Commands:
-  sign  
+  sign
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -98,7 +99,7 @@ Options:
 ```
 
 ```shell
-$ hwi psbt sign --help
+$ hwi psbt sign -h
 Usage: hwi psbt sign [OPTIONS] --psbt <PSBT>
 
 Options:
@@ -111,12 +112,12 @@ Options:
 ```
 
 ```shell
-$ hwi wallet --help
+$ hwi wallet -h
 Usage: hwi wallet [OPTIONS] <COMMAND>
 
 Commands:
-  register       
-  is-registered  
+  register
+  is-registered
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -125,7 +126,7 @@ Options:
 ```
 
 ```shell
-$ hwi wallet register --help
+$ hwi wallet register -h
 Usage: hwi wallet register [OPTIONS] --name <NAME> --policy <POLICY>
 
 Options:
@@ -136,7 +137,7 @@ Options:
 ```
 
 ```shell
-$ hwi wallet is-registered --help
+$ hwi wallet is-registered -h
 Usage: hwi wallet is-registered [OPTIONS] --policy <POLICY>
 
 Options:
@@ -147,11 +148,26 @@ Options:
 ```
 
 ```shell
-$ hwi xpub --help
+$ hwi persist -h
+Usage: hwi persist [OPTIONS] <COMMAND>
+
+Commands:
+  enable   enable persistence
+  disable  disable persistence
+  status   show persistence status
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi xpub -h
 Usage: hwi xpub [OPTIONS] <COMMAND>
 
 Commands:
-  get   
+  get
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -160,7 +176,7 @@ Options:
 ```
 
 ```shell
-$ hwi xpub get --help
+$ hwi xpub get -h
 Usage: hwi xpub get [OPTIONS] --path <PATH>
 
 Options:
@@ -168,6 +184,16 @@ Options:
   -o, --output <OUTPUT>  write command output to file instead of stdout
   -h, --help             Print help
 ```
+
+## Persistence
+
+Persistence is disabled by default. Enable it with:
+
+```shell
+$ hwi persist enable
+```
+
+On Linux, async-hwi stores state under `~/.async-hwi`. On macOS and Windows, it uses the platform config directory.
 
 ## Examples
 

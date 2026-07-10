@@ -2,7 +2,7 @@ use std::{
     error::Error,
     ffi::OsString,
     io::{self, IsTerminal, Read},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use async_hwi::{xpub_with_origin, AddressScript, DeviceKind};
@@ -14,6 +14,7 @@ use bitcoin::{
     Network,
 };
 use clap::{Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -42,6 +43,8 @@ enum Commands {
     Psbt(PsbtCommands),
     #[command(subcommand)]
     Wallet(WalletCommands),
+    #[command(subcommand)]
+    Persist(PersistCommands),
     #[command(subcommand)]
     Xpub(XpubCommands),
 }
@@ -111,6 +114,16 @@ enum WalletCommands {
 }
 
 #[derive(Debug, Subcommand)]
+enum PersistCommands {
+    /// enable persistence
+    Enable,
+    /// disable persistence
+    Disable,
+    /// show persistence status
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
 enum XpubCommands {
     Get {
         /// derivation path
@@ -127,6 +140,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         network,
         output,
     } = parse_args()?;
+    let paths = Paths::new()?;
+    let persist = read_config(&paths)?.persist;
+
     match command {
         Commands::Address(AddressCommands::Display {
             index,
@@ -248,6 +264,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
             output_lines(output.as_ref(), &res)?;
         }
+        Commands::Persist(PersistCommands::Enable) => {
+            write_config(&paths, Config { persist: true })?;
+        }
+        Commands::Persist(PersistCommands::Disable) => {
+            write_config(&paths, Config { persist: false })?;
+        }
+        Commands::Persist(PersistCommands::Status) => {
+            println!("{}", if persist { "enabled" } else { "disabled" });
+        }
     }
     Ok(())
 }
@@ -265,6 +290,77 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
 
 fn matches_fingerprint(expected: Option<Fingerprint>, actual: Fingerprint) -> bool {
     expected.is_none_or(|expected| expected == actual)
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct Config {
+    persist: bool,
+}
+
+struct Paths {
+    root: PathBuf,
+}
+
+impl Paths {
+    fn new() -> Result<Self, Box<dyn Error>> {
+        Ok(Self { root: app_dir()? })
+    }
+
+    fn config(&self) -> PathBuf {
+        self.root.join("config.json")
+    }
+}
+
+fn app_dir() -> Result<PathBuf, Box<dyn Error>> {
+    #[cfg(target_os = "linux")]
+    {
+        dirs::home_dir()
+            .map(|home| home.join(".async-hwi"))
+            .ok_or_else(|| invalid_input("home directory is unavailable"))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        dirs::config_dir()
+            .map(|dir| dir.join("async-hwi"))
+            .ok_or_else(|| invalid_input("config directory is unavailable"))
+    }
+}
+
+fn read_config(paths: &Paths) -> Result<Config, Box<dyn Error>> {
+    read_json_or_default(&paths.config())
+}
+
+fn write_config(paths: &Paths, config: Config) -> Result<(), Box<dyn Error>> {
+    write_json(&paths.config(), &config)
+}
+
+fn read_json_or_default<T>(path: &Path) -> Result<T, Box<dyn Error>>
+where
+    T: Default + for<'a> Deserialize<'a>,
+{
+    if !path.exists() {
+        return Ok(T::default());
+    }
+
+    let content = std::fs::read_to_string(path)?;
+    if content.trim().is_empty() {
+        return Ok(T::default());
+    }
+
+    Ok(serde_json::from_str(&content)?)
+}
+
+fn write_json<T: Serialize + ?Sized>(path: &PathBuf, value: &T) -> Result<(), Box<dyn Error>> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, format!("{}\n", serde_json::to_string_pretty(value)?))?;
+    Ok(())
+}
+
+fn invalid_input(msg: impl Into<String>) -> Box<dyn Error> {
+    io::Error::new(io::ErrorKind::InvalidInput, msg.into()).into()
 }
 
 fn output_lines(output: Option<&PathBuf>, lines: &[String]) -> Result<(), Box<dyn Error>> {
