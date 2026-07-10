@@ -17,7 +17,7 @@ use bitcoin::{
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
-const PSBT_SIGN_ABOUT: &str = "sign psbt from --psbt or stdin";
+const PSBT_SIGN_ABOUT: &str = "sign psbt from --psbt, --psbt-file, or stdin";
 const WALLET_REGISTER_ABOUT: &str = "register wallet from persisted state or --name and --policy";
 const WALLET_IS_REGISTERED_ABOUT: &str =
     "check wallet registration from persisted state or wallet name and policy";
@@ -95,7 +95,7 @@ enum PsbtCommands {
     #[command(
         about = PSBT_SIGN_ABOUT,
         long_about = persist_long_about(
-            "Sign psbt from --psbt or stdin. Use persisted state or wallet name and policy to provide wallet metadata"
+            "Sign psbt from --psbt, --psbt-file, or stdin. Use persisted state or wallet name and policy to provide wallet metadata"
         )
     )]
     Sign {
@@ -105,6 +105,9 @@ enum PsbtCommands {
         /// psbt to sign
         #[arg(value_parser = clap::value_parser!(bitcoin::psbt::Psbt), hide = true)]
         psbt_arg: Option<Psbt>,
+        /// read psbt from file
+        #[arg(long)]
+        psbt_file: Option<PathBuf>,
         /// wallet name
         #[arg(long)]
         wallet_name: Option<String>,
@@ -319,11 +322,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Commands::Psbt(PsbtCommands::Sign {
             psbt,
             psbt_arg,
+            psbt_file,
             wallet_name,
             wallet_policy,
             hmac,
         }) => {
-            let mut psbt = resolve_psbt(psbt.or(psbt_arg))?;
+            let mut psbt = resolve_psbt(psbt.or(psbt_arg), psbt_file)?;
             let args = WalletArgs::new(wallet_name, wallet_policy, hmac);
             let resolver = wallet_resolver(&paths, persist, args);
             let (devices, bitbox) =
@@ -819,10 +823,12 @@ fn read_stdin(name: &'static str) -> Result<String, Box<dyn Error>> {
     Ok(input.trim_end().to_string())
 }
 
-fn resolve_psbt(psbt: Option<Psbt>) -> Result<Psbt, Box<dyn Error>> {
-    match psbt {
-        Some(psbt) => Ok(psbt),
-        None => Ok(read_stdin("psbt")?.parse()?),
+fn resolve_psbt(psbt: Option<Psbt>, psbt_file: Option<PathBuf>) -> Result<Psbt, Box<dyn Error>> {
+    match (psbt, psbt_file) {
+        (Some(_), Some(_)) => Err(invalid_input("use either --psbt or --psbt-file")),
+        (Some(psbt), None) => Ok(psbt),
+        (None, Some(path)) => Ok(std::fs::read_to_string(path)?.trim_end().parse()?),
+        (None, None) => Ok(read_stdin("psbt")?.parse()?),
     }
 }
 

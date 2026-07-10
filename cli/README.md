@@ -92,7 +92,7 @@ $ hwi psbt --help
 Usage: hwi psbt [OPTIONS] <COMMAND>
 
 Commands:
-  sign  sign psbt from --psbt or stdin
+  sign  sign psbt from --psbt, --psbt-file, or stdin
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -102,13 +102,16 @@ Options:
 
 ```shell
 $ hwi psbt sign --help
-Sign psbt from --psbt or stdin. Use persisted state or wallet name and policy to provide wallet metadata. When persistence is enabled, wallet metadata is loaded by device fingerprint from the async-hwi state directory. Command arguments must match existing persisted values.
+Sign psbt from --psbt, --psbt-file, or stdin. Use persisted state or wallet name and policy to provide wallet metadata. When persistence is enabled, wallet metadata is loaded by device fingerprint from the async-hwi state directory. Command arguments must match existing persisted values.
 
 Usage: hwi psbt sign [OPTIONS]
 
 Options:
       --psbt <PSBT>
           psbt to sign
+
+      --psbt-file <PSBT_FILE>
+          read psbt from file
 
       --wallet-name <WALLET_NAME>
           wallet name
