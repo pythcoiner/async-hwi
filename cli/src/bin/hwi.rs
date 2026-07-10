@@ -71,7 +71,7 @@ enum DeviceCommands {
 enum PsbtCommands {
     Sign {
         /// psbt to sign
-        #[arg(long, alias = "fg", value_parser = clap::value_parser!(bitcoin::psbt::Psbt))]
+        #[arg(long, value_parser = clap::value_parser!(bitcoin::psbt::Psbt))]
         psbt: Psbt,
         /// wallet name
         #[arg(long)]
