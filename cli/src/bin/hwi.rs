@@ -1,4 +1,4 @@
-use std::error::Error;
+use std::{error::Error, path::PathBuf};
 
 use async_hwi::{xpub_with_origin, AddressScript, DeviceKind};
 use async_hwi_cli::command;
@@ -22,6 +22,9 @@ struct Args {
     /// default will be the Bitcoin mainnet network.
     #[arg(long, value_parser = clap::value_parser!(bitcoin::Network), default_value_t = bitcoin::Network::Bitcoin)]
     network: Network,
+    /// write command output to file instead of stdout.
+    #[arg(short, long, global = true)]
+    output: Option<PathBuf>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -113,8 +116,13 @@ enum XpubCommands {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let args = Args::parse();
-    match args.command {
+    let Args {
+        command,
+        fingerprint,
+        network,
+        output,
+    } = Args::parse();
+    match command {
         Commands::Address(AddressCommands::Display {
             index,
             wallet_name,
@@ -124,7 +132,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }) => {
             if let Some(policy) = wallet_policy {
                 for device in command::list(
-                    args.network,
+                    network,
                     Some(command::Wallet {
                         name: wallet_name.as_ref(),
                         policy: Some(&policy),
@@ -133,7 +141,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .await?
                 {
-                    if let Some(fg) = args.fingerprint {
+                    if let Some(fg) = fingerprint {
                         if fg != device.get_master_fingerprint().await? {
                             continue;
                         }
@@ -147,9 +155,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     break;
                 }
             } else if let Some(path) = p2tr {
-                for device in command::list(args.network, None).await? {
+                for device in command::list(network, None).await? {
                     {
-                        if let Some(fg) = args.fingerprint {
+                        if let Some(fg) = fingerprint {
                             if fg != device.get_master_fingerprint().await? {
                                 continue;
                             }
@@ -161,7 +169,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         Commands::Device(DeviceCommands::List) => {
-            for device in command::list(args.network, None).await? {
+            for device in command::list(network, None).await? {
                 print!("{}", device.get_master_fingerprint().await?);
                 print!(" {}", device.device_kind());
                 if let Ok(version) = device.get_version().await.map(|v| v.to_string()) {
@@ -171,33 +179,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         Commands::Xpub(XpubCommands::Get { path }) => {
-            for device in command::list(args.network, None).await? {
+            let mut res = Vec::new();
+            for device in command::list(network, None).await? {
                 let fg = device.get_master_fingerprint().await?;
-                if let Some(expected_fg) = args.fingerprint {
+                if let Some(expected_fg) = fingerprint {
                     if expected_fg != fg {
                         continue;
                     }
                 }
                 let xpub = device.get_extended_pubkey(&path).await?;
-                println!("{}", xpub_with_origin(fg, &path, xpub));
+                res.push(xpub_with_origin(fg, &path, xpub));
             }
+            output_lines(output.as_ref(), &res)?;
         }
         Commands::Wallet(WalletCommands::Register { name, policy }) => {
-            for device in command::list(args.network, None).await? {
-                if let Some(fg) = args.fingerprint {
+            let mut res = Vec::new();
+            for device in command::list(network, None).await? {
+                if let Some(fg) = fingerprint {
                     if fg != device.get_master_fingerprint().await? {
                         continue;
                     }
                 }
 
                 if let Some(hmac) = device.register_wallet(&name, &policy).await? {
-                    println!("{}", hex::encode(hmac));
+                    res.push(hex::encode(hmac));
                 }
             }
+            output_lines(output.as_ref(), &res)?;
         }
         Commands::Wallet(WalletCommands::IsRegistered { name, policy }) => {
-            for device in command::list(args.network, None).await? {
-                if let Some(fg) = args.fingerprint {
+            let mut res = Vec::new();
+            for device in command::list(network, None).await? {
+                if let Some(fg) = fingerprint {
                     if fg != device.get_master_fingerprint().await? {
                         continue;
                     }
@@ -209,9 +222,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     | DeviceKind::Jade => (name.clone().expect("name is required"), policy.clone()),
                     _ => ("".into(), policy.clone()),
                 };
-                let res = device.is_wallet_registered(&name, &policy).await?;
-                println!("{res}");
+                let registered = device.is_wallet_registered(&name, &policy).await?;
+                res.push(registered.to_string());
             }
+            output_lines(output.as_ref(), &res)?;
         }
         Commands::Psbt(PsbtCommands::Sign {
             mut psbt,
@@ -219,8 +233,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             wallet_policy,
             hmac,
         }) => {
+            let mut res = Vec::new();
             for device in command::list(
-                args.network,
+                network,
                 Some(command::Wallet {
                     name: wallet_name.as_ref(),
                     policy: wallet_policy.as_ref(),
@@ -229,14 +244,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
             )
             .await?
             {
-                if let Some(fg) = args.fingerprint {
+                if let Some(fg) = fingerprint {
                     if fg != device.get_master_fingerprint().await? {
                         continue;
                     }
                 }
                 device.sign_tx(&mut psbt).await?;
-                println!("{psbt}");
+                res.push(psbt.to_string());
             }
+            output_lines(output.as_ref(), &res)?;
+        }
+    }
+    Ok(())
+}
+
+fn output_lines(output: Option<&PathBuf>, lines: &[String]) -> Result<(), Box<dyn Error>> {
+    if let Some(output) = output {
+        std::fs::write(output, lines.join("\n"))?;
+    } else {
+        for line in lines {
+            println!("{line}");
         }
     }
     Ok(())

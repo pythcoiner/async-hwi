@@ -25,6 +25,7 @@ Commands:
 Options:
       --fingerprint <FINGERPRINT>  default will be the first connected device with the master fingerprint matching
       --network <NETWORK>          default will be the Bitcoin mainnet network [default: bitcoin]
+  -o, --output <OUTPUT>            write command output to file instead of stdout
   -h, --help                       Print help
   -V, --version                    Print version
 ```
