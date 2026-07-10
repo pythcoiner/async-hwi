@@ -162,12 +162,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::Device(DeviceCommands::List) => {
             for device in command::list(args.network, None).await? {
-                eprint!("{}", device.get_master_fingerprint().await?);
-                eprint!(" {}", device.device_kind());
+                print!("{}", device.get_master_fingerprint().await?);
+                print!(" {}", device.device_kind());
                 if let Ok(version) = device.get_version().await.map(|v| v.to_string()) {
-                    eprint!(" {version}");
+                    print!(" {version}");
                 }
-                eprintln!();
+                println!();
             }
         }
         Commands::Xpub(XpubCommands::Get { path }) => {
@@ -179,7 +179,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 let xpub = device.get_extended_pubkey(&path).await?;
-                eprintln!("{}", xpub_with_origin(fg, &path, xpub));
+                println!("{}", xpub_with_origin(fg, &path, xpub));
             }
         }
         Commands::Wallet(WalletCommands::Register { name, policy }) => {
@@ -191,7 +191,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 if let Some(hmac) = device.register_wallet(&name, &policy).await? {
-                    eprintln!("{}", hex::encode(hmac));
+                    println!("{}", hex::encode(hmac));
                 }
             }
         }
@@ -210,7 +210,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     _ => ("".into(), policy.clone()),
                 };
                 let res = device.is_wallet_registered(&name, &policy).await?;
-                eprintln!("{res}");
+                println!("{res}");
             }
         }
         Commands::Psbt(PsbtCommands::Sign {
@@ -235,7 +235,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
                 device.sign_tx(&mut psbt).await?;
-                eprintln!("{psbt}");
+                println!("{psbt}");
             }
         }
     }

@@ -56,7 +56,7 @@ pub mod command {
         }
 
         match Jade::enumerate().await {
-            Err(e) => println!("{e:?}"),
+            Err(e) => eprintln!("{e:?}"),
             Ok(devices) => {
                 for device in devices {
                     let device = device.with_network(network);
