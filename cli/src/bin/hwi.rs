@@ -1,4 +1,9 @@
-use std::{error::Error, path::PathBuf};
+use std::{
+    error::Error,
+    ffi::OsString,
+    io::{self, IsTerminal, Read},
+    path::PathBuf,
+};
 
 use async_hwi::{xpub_with_origin, AddressScript, DeviceKind};
 use async_hwi_cli::command;
@@ -121,7 +126,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         fingerprint,
         network,
         output,
-    } = Args::parse();
+    } = parse_args()?;
     match command {
         Commands::Address(AddressCommands::Display {
             index,
@@ -256,6 +261,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
     Ok(())
+}
+
+fn parse_args() -> Result<Args, Box<dyn Error>> {
+    let mut args = std::env::args_os().collect::<Vec<OsString>>();
+    let mut stdin = io::stdin();
+    if !stdin.is_terminal() {
+        let mut input = String::new();
+        stdin.read_to_string(&mut input)?;
+        args.extend(input.trim_end().split_whitespace().map(OsString::from));
+    }
+    Ok(Args::parse_from(args))
 }
 
 fn output_lines(output: Option<&PathBuf>, lines: &[String]) -> Result<(), Box<dyn Error>> {
