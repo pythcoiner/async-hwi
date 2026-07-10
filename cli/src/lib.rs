@@ -5,9 +5,9 @@ pub mod command {
         jade::{self, Jade},
         ledger::{HidApi, Ledger, LedgerSimulator, TransportHID},
         specter::{Specter, SpecterSimulator},
-        HWI,
+        DeviceKind, HWI,
     };
-    use bitcoin::{hashes::hex::FromHex, Network};
+    use bitcoin::{bip32::Fingerprint, hashes::hex::FromHex, Network};
     use std::error::Error;
 
     pub struct Wallet<'a> {
@@ -16,19 +16,35 @@ pub mod command {
         pub hmac: Option<&'a String>,
     }
 
+    pub struct Device {
+        pub fingerprint: Fingerprint,
+        pub kind: DeviceKind,
+        pub handle: Box<dyn HWI + Send>,
+    }
+
     pub async fn list(
         network: Network,
         wallet: Option<Wallet<'_>>,
-    ) -> Result<Vec<Box<dyn HWI + Send>>, Box<dyn Error>> {
+    ) -> Result<Vec<Device>, Box<dyn Error>> {
         let mut hws = Vec::new();
 
         if let Ok(device) = SpecterSimulator::try_connect().await {
-            hws.push(device.into());
+            let fingerprint = device.get_master_fingerprint().await?;
+            hws.push(Device {
+                fingerprint,
+                kind: DeviceKind::SpecterSimulator,
+                handle: device.into(),
+            });
         }
 
         if let Ok(devices) = Specter::enumerate().await {
             for device in devices {
-                hws.push(device.into());
+                let fingerprint = device.get_master_fingerprint().await?;
+                hws.push(Device {
+                    fingerprint,
+                    kind: DeviceKind::Specter,
+                    handle: device.into(),
+                });
             }
         }
 
@@ -44,15 +60,24 @@ pub mod command {
                                 continue;
                             }
                         }
-
-                        hws.push(device.into());
+                        let fingerprint = device.get_master_fingerprint().await?;
+                        hws.push(Device {
+                            fingerprint,
+                            kind: DeviceKind::Jade,
+                            handle: device.into(),
+                        });
                     }
                 }
             }
         }
 
         if let Ok(device) = LedgerSimulator::try_connect().await {
-            hws.push(device.into());
+            let fingerprint = device.get_master_fingerprint().await?;
+            hws.push(Device {
+                fingerprint,
+                kind: DeviceKind::LedgerSimulator,
+                handle: device.into(),
+            });
         }
 
         let api = Box::new(HidApi::new().unwrap());
@@ -71,7 +96,12 @@ pub mod command {
                             if let Some(policy) = wallet.as_ref().and_then(|w| w.policy) {
                                 bb02 = bb02.with_policy(policy)?;
                             }
-                            hws.push(bb02.into());
+                            let fingerprint = bb02.get_master_fingerprint().await?;
+                            hws.push(Device {
+                                fingerprint,
+                                kind: DeviceKind::BitBox02,
+                                handle: bb02.into(),
+                            });
                         }
                     }
                 }
@@ -92,7 +122,12 @@ pub mod command {
                                     .to_string(),
                             );
                         }
-                        hws.push(hw.into())
+                        let fingerprint = hw.get_master_fingerprint().await?;
+                        hws.push(Device {
+                            fingerprint,
+                            kind: DeviceKind::Coldcard,
+                            handle: hw.into(),
+                        })
                     }
                 }
             }
@@ -118,7 +153,12 @@ pub mod command {
                         hmac,
                     )?;
                 }
-                hws.push(device.into());
+                let fingerprint = device.get_master_fingerprint().await?;
+                hws.push(Device {
+                    fingerprint,
+                    kind: DeviceKind::Ledger,
+                    handle: device.into(),
+                });
             }
         }
 

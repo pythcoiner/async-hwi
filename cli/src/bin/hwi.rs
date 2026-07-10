@@ -146,12 +146,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
                 .await?
                 {
-                    if let Some(fg) = fingerprint {
-                        if fg != device.get_master_fingerprint().await? {
-                            continue;
-                        }
+                    if !matches_fingerprint(fingerprint, device.fingerprint) {
+                        continue;
                     }
                     device
+                        .handle
                         .display_address(&AddressScript::Miniscript {
                             index: index.expect("Must be present"),
                             change: false,
@@ -161,23 +160,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 }
             } else if let Some(path) = p2tr {
                 for device in command::list(network, None).await? {
-                    {
-                        if let Some(fg) = fingerprint {
-                            if fg != device.get_master_fingerprint().await? {
-                                continue;
-                            }
-                        }
-                        device.display_address(&AddressScript::P2TR(path)).await?;
-                        break;
+                    if !matches_fingerprint(fingerprint, device.fingerprint) {
+                        continue;
                     }
+                    device
+                        .handle
+                        .display_address(&AddressScript::P2TR(path))
+                        .await?;
+                    break;
                 }
             }
         }
         Commands::Device(DeviceCommands::List) => {
             for device in command::list(network, None).await? {
-                print!("{}", device.get_master_fingerprint().await?);
-                print!(" {}", device.device_kind());
-                if let Ok(version) = device.get_version().await.map(|v| v.to_string()) {
+                print!("{}", device.fingerprint);
+                print!(" {}", device.kind);
+                if let Ok(version) = device.handle.get_version().await.map(|v| v.to_string()) {
                     print!(" {version}");
                 }
                 println!();
@@ -186,27 +184,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Commands::Xpub(XpubCommands::Get { path }) => {
             let mut res = Vec::new();
             for device in command::list(network, None).await? {
-                let fg = device.get_master_fingerprint().await?;
-                if let Some(expected_fg) = fingerprint {
-                    if expected_fg != fg {
-                        continue;
-                    }
+                if !matches_fingerprint(fingerprint, device.fingerprint) {
+                    continue;
                 }
-                let xpub = device.get_extended_pubkey(&path).await?;
-                res.push(xpub_with_origin(fg, &path, xpub));
+                let xpub = device.handle.get_extended_pubkey(&path).await?;
+                res.push(xpub_with_origin(device.fingerprint, &path, xpub));
             }
             output_lines(output.as_ref(), &res)?;
         }
         Commands::Wallet(WalletCommands::Register { name, policy }) => {
             let mut res = Vec::new();
             for device in command::list(network, None).await? {
-                if let Some(fg) = fingerprint {
-                    if fg != device.get_master_fingerprint().await? {
-                        continue;
-                    }
+                if !matches_fingerprint(fingerprint, device.fingerprint) {
+                    continue;
                 }
 
-                if let Some(hmac) = device.register_wallet(&name, &policy).await? {
+                if let Some(hmac) = device.handle.register_wallet(&name, &policy).await? {
                     res.push(hex::encode(hmac));
                 }
             }
@@ -215,19 +208,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Commands::Wallet(WalletCommands::IsRegistered { name, policy }) => {
             let mut res = Vec::new();
             for device in command::list(network, None).await? {
-                if let Some(fg) = fingerprint {
-                    if fg != device.get_master_fingerprint().await? {
-                        continue;
-                    }
+                if !matches_fingerprint(fingerprint, device.fingerprint) {
+                    continue;
                 }
-                let (name, policy) = match device.device_kind() {
+                let (name, policy) = match device.kind {
                     DeviceKind::Ledger
                     | DeviceKind::LedgerSimulator
                     | DeviceKind::Coldcard
                     | DeviceKind::Jade => (name.clone().expect("name is required"), policy.clone()),
                     _ => ("".into(), policy.clone()),
                 };
-                let registered = device.is_wallet_registered(&name, &policy).await?;
+                let registered = device.handle.is_wallet_registered(&name, &policy).await?;
                 res.push(registered.to_string());
             }
             output_lines(output.as_ref(), &res)?;
@@ -249,12 +240,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             )
             .await?
             {
-                if let Some(fg) = fingerprint {
-                    if fg != device.get_master_fingerprint().await? {
-                        continue;
-                    }
+                if !matches_fingerprint(fingerprint, device.fingerprint) {
+                    continue;
                 }
-                device.sign_tx(&mut psbt).await?;
+                device.handle.sign_tx(&mut psbt).await?;
                 res.push(psbt.to_string());
             }
             output_lines(output.as_ref(), &res)?;
@@ -272,6 +261,10 @@ fn parse_args() -> Result<Args, Box<dyn Error>> {
         args.extend(input.trim_end().split_whitespace().map(OsString::from));
     }
     Ok(Args::parse_from(args))
+}
+
+fn matches_fingerprint(expected: Option<Fingerprint>, actual: Fingerprint) -> bool {
+    expected.is_none_or(|expected| expected == actual)
 }
 
 fn output_lines(output: Option<&PathBuf>, lines: &[String]) -> Result<(), Box<dyn Error>> {
