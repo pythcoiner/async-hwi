@@ -15,6 +15,39 @@ requirements:
 
 {{CLI_HELP}}
 
+## Persistence
+
+Persistence is disabled by default. Enable it with:
+
+```shell
+$ hwi persist enable
+```
+
+On Linux, async-hwi stores state under `~/.async-hwi`. On macOS and Windows, it uses the platform config directory.
+
+Wallet state is stored in a single file:
+
+```text
+~/.async-hwi/state.json
+```
+
+The file is a JSON object keyed by fingerprint:
+
+```json
+{
+  "ffd63c8d": [
+    {
+      "kind": "ledger",
+      "name": "Liana",
+      "descriptor": "wsh(...)",
+      "por": "4e143a98f46ea585fb8d87a6dd3ca14d689dfbf3d2e9ca1f9618b60cf969c232"
+    }
+  ]
+}
+```
+
+BitBox02 pairing data is stored globally in `bitbox.json` because one BitBox pairing config works for all paired BitBox02 devices.
+
 ## Examples
 
 ```shell

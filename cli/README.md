@@ -24,6 +24,9 @@ Commands:
   device   
   psbt     
   wallet   
+  state    
+  bitbox   
+  persist  
   xpub     
   help     Print this message or the help of the given subcommand(s)
 
@@ -89,7 +92,7 @@ $ hwi psbt --help
 Usage: hwi psbt [OPTIONS] <COMMAND>
 
 Commands:
-  sign  
+  sign  sign psbt from --psbt or stdin
   help  Print this message or the help of the given subcommand(s)
 
 Options:
@@ -99,15 +102,28 @@ Options:
 
 ```shell
 $ hwi psbt sign --help
-Usage: hwi psbt sign [OPTIONS] --psbt <PSBT>
+Sign psbt from --psbt or stdin. Use persisted state or wallet name and policy to provide wallet metadata. When persistence is enabled, wallet metadata is loaded by device fingerprint from the async-hwi state directory. Command arguments must match existing persisted values.
+
+Usage: hwi psbt sign [OPTIONS]
 
 Options:
-      --psbt <PSBT>                    psbt to sign
-      --wallet-name <WALLET_NAME>      wallet name
-      --wallet-policy <WALLET_POLICY>  wallet policy
-      --hmac <HMAC>                    proof of registration, ledger only
-  -o, --output <OUTPUT>                write command output to file instead of stdout
-  -h, --help                           Print help
+      --psbt <PSBT>
+          psbt to sign
+
+      --wallet-name <WALLET_NAME>
+          wallet name
+
+      --wallet-policy <WALLET_POLICY>
+          wallet policy
+
+      --hmac <HMAC>
+          proof of registration, ledger only
+
+  -o, --output <OUTPUT>
+          write command output to file instead of stdout
+
+  -h, --help
+          Print help (see a summary with '-h')
 ```
 
 ```shell
@@ -115,8 +131,8 @@ $ hwi wallet --help
 Usage: hwi wallet [OPTIONS] <COMMAND>
 
 Commands:
-  register       
-  is-registered  
+  register       register wallet from persisted state or --name and --policy
+  is-registered  check wallet registration from persisted state or wallet name and policy
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -126,22 +142,163 @@ Options:
 
 ```shell
 $ hwi wallet register --help
-Usage: hwi wallet register [OPTIONS] --name <NAME> --policy <POLICY>
+Register wallet from persisted state or --name and --policy. When persistence is enabled, wallet metadata is loaded by device fingerprint from the async-hwi state directory. Command arguments must match existing persisted values.
+
+Usage: hwi wallet register [OPTIONS]
 
 Options:
-      --name <NAME>      wallet name
-      --policy <POLICY>  wallet policy
+  -n, --name <NAME>
+          wallet name
+
+  -p, --policy <POLICY>
+          wallet policy
+
+  -o, --output <OUTPUT>
+          write command output to file instead of stdout
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+```shell
+$ hwi wallet is-registered --help
+Check wallet registration from persisted state or wallet name and policy. When persistence is enabled, wallet metadata is loaded by device fingerprint from the async-hwi state directory. Command arguments must match existing persisted values.
+
+Usage: hwi wallet is-registered [OPTIONS]
+
+Options:
+  -n, --name <NAME>
+          wallet name
+
+  -p, --policy <POLICY>
+          wallet policy
+
+  -o, --output <OUTPUT>
+          write command output to file instead of stdout
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
+```shell
+$ hwi bitbox --help
+Usage: hwi bitbox [OPTIONS] <COMMAND>
+
+Commands:
+  show  
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
   -o, --output <OUTPUT>  write command output to file instead of stdout
   -h, --help             Print help
 ```
 
 ```shell
-$ hwi wallet is-registered --help
-Usage: hwi wallet is-registered [OPTIONS] --policy <POLICY>
+$ hwi bitbox show --help
+Usage: hwi bitbox show [OPTIONS]
 
 Options:
-      --name <NAME>      wallet name
-      --policy <POLICY>  wallet policy
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state --help
+Usage: hwi state [OPTIONS] <COMMAND>
+
+Commands:
+  clear  
+  show   
+  edit   
+  rm     
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state clear --help
+Usage: hwi state clear [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state show --help
+Usage: hwi state show [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state edit --help
+Usage: hwi state edit [OPTIONS] <FIELD> [VALUE]
+
+Arguments:
+  <FIELD>  [possible values: name, descriptor, por]
+  [VALUE]  
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state rm --help
+Usage: hwi state rm [OPTIONS] <FIELD>
+
+Arguments:
+  <FIELD>  [possible values: name, descriptor, por]
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi persist --help
+Usage: hwi persist [OPTIONS] <COMMAND>
+
+Commands:
+  enable   
+  disable  
+  status   
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi persist enable --help
+Usage: hwi persist enable [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi persist disable --help
+Usage: hwi persist disable [OPTIONS]
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi persist status --help
+Usage: hwi persist status [OPTIONS]
+
+Options:
   -o, --output <OUTPUT>  write command output to file instead of stdout
   -h, --help             Print help
 ```
@@ -168,6 +325,39 @@ Options:
   -o, --output <OUTPUT>  write command output to file instead of stdout
   -h, --help             Print help
 ```
+
+## Persistence
+
+Persistence is disabled by default. Enable it with:
+
+```shell
+$ hwi persist enable
+```
+
+On Linux, async-hwi stores state under `~/.async-hwi`. On macOS and Windows, it uses the platform config directory.
+
+Wallet state is stored in a single file:
+
+```text
+~/.async-hwi/state.json
+```
+
+The file is a JSON object keyed by fingerprint:
+
+```json
+{
+  "ffd63c8d": [
+    {
+      "kind": "ledger",
+      "name": "Liana",
+      "descriptor": "wsh(...)",
+      "por": "4e143a98f46ea585fb8d87a6dd3ca14d689dfbf3d2e9ca1f9618b60cf969c232"
+    }
+  ]
+}
+```
+
+BitBox02 pairing data is stored globally in `bitbox.json` because one BitBox pairing config works for all paired BitBox02 devices.
 
 ## Examples
 

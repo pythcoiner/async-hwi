@@ -1,39 +1,55 @@
 pub mod command {
     use async_hwi::{
-        bitbox::{api::runtime, BitBox02, PairingBitbox02WithLocalCache},
+        bitbox::{api::runtime, BitBox02, NoiseConfigData, PairingBitbox02WithLocalCache},
         coldcard,
         jade::{self, Jade},
         ledger::{HidApi, Ledger, LedgerSimulator, TransportHID},
         specter::{Specter, SpecterSimulator},
         trezor::{TrezorClient, WalletPolicy},
-        HWI,
+        DeviceKind, HWI,
     };
-    use bitcoin::{hashes::hex::FromHex, Network};
+    use bitcoin::{bip32::Fingerprint, hashes::hex::FromHex, Network};
     use std::error::Error;
 
-    pub struct Wallet<'a> {
-        pub name: Option<&'a String>,
-        pub policy: Option<&'a String>,
-        pub hmac: Option<&'a String>,
+    #[derive(Clone)]
+    pub struct Wallet {
+        pub name: Option<String>,
+        pub policy: Option<String>,
+        pub hmac: Option<String>,
     }
+
+    pub struct Device {
+        pub fingerprint: Fingerprint,
+        pub kind: DeviceKind,
+        pub device: Box<dyn HWI + Send>,
+    }
+
+    pub type WalletResolver<'a> =
+        dyn Fn(Fingerprint, DeviceKind) -> Result<Option<Wallet>, Box<dyn Error>> + 'a;
 
     pub async fn list(
         network: Network,
-        wallet: Option<Wallet<'_>>,
-    ) -> Result<Vec<Box<dyn HWI + Send>>, Box<dyn Error>> {
+        wallet: Option<&WalletResolver<'_>>,
+        bitbox_pairing: Option<NoiseConfigData>,
+    ) -> Result<(Vec<Device>, Option<NoiseConfigData>), Box<dyn Error>> {
         let mut hws = Vec::new();
+        let mut updated_bitbox_pairing = None;
 
         for device in TrezorClient::find_devices() {
             if let Ok(mut device) = TrezorClient::connect(device, network) {
-                if let Some(wallet) = wallet.as_ref() {
+                let fingerprint = device.get_master_fingerprint().await?;
+                if let Some(wallet) = resolve_wallet(wallet, fingerprint, DeviceKind::Trezor)? {
                     let name = wallet
                         .name
+                        .as_ref()
                         .ok_or::<Box<dyn Error>>("Trezor requires a wallet name".into())?;
                     let policy = wallet
                         .policy
+                        .as_ref()
                         .ok_or::<Box<dyn Error>>("Trezor requires a wallet policy".into())?;
                     let hmac_hex = wallet
                         .hmac
+                        .as_ref()
                         .ok_or::<Box<dyn Error>>("Trezor requires a wallet hmac".into())?;
                     let mut hmac = [b'\0'; 32];
                     hmac.copy_from_slice(&Vec::from_hex(&hmac_hex)?);
@@ -41,17 +57,31 @@ pub mod command {
                     let wallet = WalletPolicy::new(name, &policy, hmac);
                     device = device.with_wallet(wallet)?;
                 }
-                hws.push(device.into());
+                hws.push(Device {
+                    fingerprint,
+                    kind: DeviceKind::Trezor,
+                    device: device.into(),
+                });
             }
         }
 
         if let Ok(device) = SpecterSimulator::try_connect().await {
-            hws.push(device.into());
+            let fingerprint = device.get_master_fingerprint().await?;
+            hws.push(Device {
+                fingerprint,
+                kind: DeviceKind::SpecterSimulator,
+                device: device.into(),
+            });
         }
 
         if let Ok(devices) = Specter::enumerate().await {
             for device in devices {
-                hws.push(device.into());
+                let fingerprint = device.get_master_fingerprint().await?;
+                hws.push(Device {
+                    fingerprint,
+                    kind: DeviceKind::Specter,
+                    device: device.into(),
+                });
             }
         }
 
@@ -68,14 +98,24 @@ pub mod command {
                             }
                         }
 
-                        hws.push(device.into());
+                        let fingerprint = device.get_master_fingerprint().await?;
+                        hws.push(Device {
+                            fingerprint,
+                            kind: DeviceKind::Jade,
+                            device: device.into(),
+                        });
                     }
                 }
             }
         }
 
         if let Ok(device) = LedgerSimulator::try_connect().await {
-            hws.push(device.into());
+            let fingerprint = device.get_master_fingerprint().await?;
+            hws.push(Device {
+                fingerprint,
+                kind: DeviceKind::LedgerSimulator,
+                device: device.into(),
+            });
         }
 
         let api = Box::new(HidApi::new().unwrap());
@@ -85,16 +125,28 @@ pub mod command {
                 if let Ok(device) = device_info.open_device(&api) {
                     if let Ok(device) =
                         PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
-                            device, None,
+                            device,
+                            bitbox_pairing.clone(),
                         )
                         .await
                     {
-                        if let Ok((device, _)) = device.wait_confirm().await {
+                        if let Ok((device, pairing_data)) = device.wait_confirm().await {
                             let mut bb02 = BitBox02::from(device).with_network(network);
-                            if let Some(policy) = wallet.as_ref().and_then(|w| w.policy) {
-                                bb02 = bb02.with_policy(policy)?;
+                            let fingerprint = bb02.get_master_fingerprint().await?;
+                            if let Some(wallet) =
+                                resolve_wallet(wallet, fingerprint, DeviceKind::BitBox02)?
+                            {
+                                let policy = wallet.policy.ok_or::<Box<dyn Error>>(
+                                    "bitbox02 requires a wallet policy".into(),
+                                )?;
+                                bb02 = bb02.with_policy(&policy)?;
                             }
-                            hws.push(bb02.into());
+                            updated_bitbox_pairing = Some(pairing_data);
+                            hws.push(Device {
+                                fingerprint,
+                                kind: DeviceKind::BitBox02,
+                                device: bb02.into(),
+                            });
                         }
                     }
                 }
@@ -105,17 +157,19 @@ pub mod command {
                 if let Some(sn) = device_info.serial_number() {
                     if let Ok((cc, _)) = coldcard::api::Coldcard::open(&api, sn, None) {
                         let mut hw = coldcard::Coldcard::from(cc);
-                        if let Some(ref wallet) = wallet {
-                            hw = hw.with_wallet_name(
-                                wallet
-                                    .name
-                                    .ok_or::<Box<dyn Error>>(
-                                        "coldcard requires a wallet name".into(),
-                                    )?
-                                    .to_string(),
-                            );
+                        let fingerprint = hw.get_master_fingerprint().await?;
+                        if let Some(wallet) =
+                            resolve_wallet(wallet, fingerprint, DeviceKind::Coldcard)?
+                        {
+                            hw = hw.with_wallet_name(wallet.name.ok_or::<Box<dyn Error>>(
+                                "coldcard requires a wallet name".into(),
+                            )?);
                         }
-                        hws.push(hw.into())
+                        hws.push(Device {
+                            fingerprint,
+                            kind: DeviceKind::Coldcard,
+                            device: hw.into(),
+                        })
                     }
                 }
             }
@@ -123,10 +177,11 @@ pub mod command {
 
         for detected in Ledger::<TransportHID>::enumerate(&api) {
             if let Ok(mut device) = Ledger::<TransportHID>::connect(&api, detected) {
-                if let Some(ref wallet) = wallet {
+                let fingerprint = device.get_master_fingerprint().await?;
+                if let Some(wallet) = resolve_wallet(wallet, fingerprint, DeviceKind::Ledger)? {
                     let hmac = if let Some(s) = wallet.hmac {
                         let mut h = [b'\0'; 32];
-                        h.copy_from_slice(&Vec::from_hex(s)?);
+                        h.copy_from_slice(&Vec::from_hex(&s)?);
                         Some(h)
                     } else {
                         None
@@ -134,17 +189,35 @@ pub mod command {
                     device = device.with_wallet(
                         wallet
                             .name
+                            .as_ref()
                             .ok_or::<Box<dyn Error>>("ledger requires a wallet name".into())?,
                         wallet
                             .policy
+                            .as_ref()
                             .ok_or::<Box<dyn Error>>("ledger requires a wallet policy".into())?,
                         hmac,
                     )?;
                 }
-                hws.push(device.into());
+                hws.push(Device {
+                    fingerprint,
+                    kind: DeviceKind::Ledger,
+                    device: device.into(),
+                });
             }
         }
 
-        Ok(hws)
+        Ok((hws, updated_bitbox_pairing))
+    }
+
+    fn resolve_wallet(
+        wallet: Option<&WalletResolver<'_>>,
+        fingerprint: Fingerprint,
+        kind: DeviceKind,
+    ) -> Result<Option<Wallet>, Box<dyn Error>> {
+        if let Some(wallet) = wallet {
+            wallet(fingerprint, kind)
+        } else {
+            Ok(None)
+        }
     }
 }
