@@ -68,7 +68,7 @@ enum Commands {
 enum AddressCommands {
     Display {
         /// address index
-        #[arg(long)]
+        #[arg(short, long)]
         index: Option<u32>,
         /// wallet name
         #[arg(long)]
