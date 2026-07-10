@@ -38,7 +38,7 @@ ledger ffd63c8d 2.1.3
 
 ```shell
 $ hwi xpub get --path "m/48'/0'/0'/1'"
-xpub6E3wdqR3xPHvUKBWwUik5cpy9pMdrdEYVHBxKx7nbT2ZTnzizbNAWe9uuPX4A4nUsamM2Tn9F6ccK5Fmrt6ResBSRWDnb9J8bpi1WKcD158
+[ffd63c8d/48'/0'/0'/1']xpub6E3wdqR3xPHvUKBWwUik5cpy9pMdrdEYVHBxKx7nbT2ZTnzizbNAWe9uuPX4A4nUsamM2Tn9F6ccK5Fmrt6ResBSRWDnb9J8bpi1WKcD158
 ```
 
 ```shell

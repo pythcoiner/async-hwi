@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use async_hwi::{AddressScript, DeviceKind};
+use async_hwi::{xpub_with_origin, AddressScript, DeviceKind};
 use async_hwi_cli::command;
 
 use bitcoin::{
@@ -172,12 +172,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::Xpub(XpubCommands::Get { path }) => {
             for device in command::list(args.network, None).await? {
-                if let Some(fg) = args.fingerprint {
-                    if fg != device.get_master_fingerprint().await? {
+                let fg = device.get_master_fingerprint().await?;
+                if let Some(expected_fg) = args.fingerprint {
+                    if expected_fg != fg {
                         continue;
                     }
                 }
-                eprintln!("{}", device.get_extended_pubkey(&path).await?);
+                let xpub = device.get_extended_pubkey(&path).await?;
+                eprintln!("{}", xpub_with_origin(fg, &path, xpub));
             }
         }
         Commands::Wallet(WalletCommands::Register { name, policy }) => {
