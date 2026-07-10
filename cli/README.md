@@ -56,7 +56,7 @@ $ hwi address display -h
 Usage: hwi address display [OPTIONS]
 
 Options:
-      --index <INDEX>                  address index
+  -i, --index <INDEX>                  address index
       --wallet-name <WALLET_NAME>      wallet name
       --wallet-policy <WALLET_POLICY>  wallet policy
       --hmac <HMAC>                    proof of registration, ledger only
