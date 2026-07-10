@@ -41,14 +41,19 @@ enum Commands {
 #[derive(Debug, Subcommand)]
 enum AddressCommands {
     Display {
+        /// address index
         #[arg(long)]
         index: Option<u32>,
+        /// wallet name
         #[arg(long)]
         wallet_name: Option<String>,
+        /// wallet policy
         #[arg(long)]
         wallet_policy: Option<String>,
+        /// proof of registration, ledger only
         #[arg(long)]
         hmac: Option<String>,
+        /// display a taproot address from path
         #[arg(long, value_parser = clap::value_parser!(bitcoin::bip32::DerivationPath))]
         p2tr: Option<DerivationPath>,
     },
@@ -62,12 +67,16 @@ enum DeviceCommands {
 #[derive(Debug, Subcommand)]
 enum PsbtCommands {
     Sign {
+        /// psbt to sign
         #[arg(long, alias = "fg", value_parser = clap::value_parser!(bitcoin::psbt::Psbt))]
         psbt: Psbt,
+        /// wallet name
         #[arg(long)]
         wallet_name: Option<String>,
+        /// wallet policy
         #[arg(long)]
         wallet_policy: Option<String>,
+        /// proof of registration, ledger only
         #[arg(long)]
         hmac: Option<String>,
     },
@@ -76,14 +85,18 @@ enum PsbtCommands {
 #[derive(Debug, Subcommand)]
 enum WalletCommands {
     Register {
+        /// wallet name
         #[arg(long)]
         name: String,
+        /// wallet policy
         #[arg(long)]
         policy: String,
     },
     IsRegistered {
+        /// wallet name
         #[arg(long)]
         name: Option<String>,
+        /// wallet policy
         #[arg(long)]
         policy: String,
     },
@@ -92,6 +105,7 @@ enum WalletCommands {
 #[derive(Debug, Subcommand)]
 enum XpubCommands {
     Get {
+        /// derivation path
         #[arg(long, value_parser = clap::value_parser!(bitcoin::bip32::DerivationPath))]
         path: DerivationPath,
     },
