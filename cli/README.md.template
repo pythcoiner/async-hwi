@@ -37,6 +37,8 @@ Wallet state is a JSON object keyed by fingerprint:
 }
 ```
 
+BitBox02 pairing data is stored globally in `bitbox.json` because one BitBox pairing config works for all paired BitBox02 devices.
+
 ## Examples
 
 ```shell

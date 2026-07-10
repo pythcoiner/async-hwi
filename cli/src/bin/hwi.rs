@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use async_hwi::{xpub_with_origin, AddressScript, DeviceKind};
+use async_hwi::{bitbox::NoiseConfigData, xpub_with_origin, AddressScript, DeviceKind};
 use async_hwi_cli::command;
 
 use bitcoin::{
@@ -54,6 +54,8 @@ enum Commands {
     Psbt(PsbtCommands),
     #[command(subcommand)]
     Wallet(WalletCommands),
+    #[command(subcommand)]
+    Bitbox(BitboxCommands),
     #[command(subcommand)]
     Persist(PersistCommands),
     #[command(subcommand)]
@@ -145,6 +147,12 @@ enum PersistCommands {
 }
 
 #[derive(Debug, Subcommand)]
+enum BitboxCommands {
+    /// show bitbox pairing state
+    Show,
+}
+
+#[derive(Debug, Subcommand)]
 enum XpubCommands {
     Get {
         /// derivation path
@@ -179,7 +187,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             };
             let resolver = wallet_resolver(&paths, persist, args.clone());
             if args.has_any() || (persist && p2tr.is_none()) {
-                for device in command::list(network, Some(&resolver)).await? {
+                for device in list_devices(&paths, persist, network, Some(&resolver)).await? {
                     if !matches_fingerprint(fingerprint, device.fingerprint) {
                         continue;
                     }
@@ -193,7 +201,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     break;
                 }
             } else if let Some(path) = p2tr {
-                for device in command::list(network, None).await? {
+                for device in list_devices(&paths, persist, network, None).await? {
                     if !matches_fingerprint(fingerprint, device.fingerprint) {
                         continue;
                     }
@@ -206,7 +214,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         Commands::Device(DeviceCommands::List) => {
-            for device in command::list(network, None).await? {
+            for device in list_devices(&paths, persist, network, None).await? {
                 print!("{}", device.fingerprint);
                 print!(" {}", device.kind);
                 if let Ok(version) = device.handle.get_version().await.map(|v| v.to_string()) {
@@ -217,7 +225,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::Xpub(XpubCommands::Get { path }) => {
             let mut res = Vec::new();
-            for device in command::list(network, None).await? {
+            for device in list_devices(&paths, persist, network, None).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
@@ -233,7 +241,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 por: None,
             };
             let mut res = Vec::new();
-            for device in command::list(network, None).await? {
+            for device in list_devices(&paths, persist, network, None).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
@@ -272,7 +280,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 por: None,
             };
             let mut res = Vec::new();
-            for device in command::list(network, None).await? {
+            for device in list_devices(&paths, persist, network, None).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
@@ -308,7 +316,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             };
             let resolver = wallet_resolver(&paths, persist, args);
             let mut res = Vec::new();
-            for device in command::list(network, Some(&resolver)).await? {
+            for device in list_devices(&paths, persist, network, Some(&resolver)).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
@@ -325,6 +333,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
         Commands::Persist(PersistCommands::Status) => {
             println!("{}", if persist { "enabled" } else { "disabled" });
+        }
+        Commands::Bitbox(BitboxCommands::Show) => {
+            output_lines(output.as_ref(), &bitbox_pairing_lines(&paths)?)?;
         }
     }
     Ok(())
@@ -361,6 +372,10 @@ impl Paths {
 
     fn config(&self) -> PathBuf {
         self.root.join("config.json")
+    }
+
+    fn bitbox(&self) -> PathBuf {
+        self.root.join("bitbox.json")
     }
 
     fn state(&self) -> PathBuf {
@@ -496,6 +511,32 @@ fn write_wallet(
     write_json(&paths.state(), &state)
 }
 
+fn bitbox_pairing_lines(paths: &Paths) -> Result<Vec<String>, Box<dyn Error>> {
+    let bitbox: NoiseConfigData = read_json_or_default(&paths.bitbox())?;
+    json_lines(&bitbox)
+}
+
+fn read_bitbox(paths: &Paths, persist: bool) -> Result<Option<NoiseConfigData>, Box<dyn Error>> {
+    if persist {
+        read_json_or_default(&paths.bitbox())
+    } else {
+        Ok(None)
+    }
+}
+
+fn write_bitbox(
+    paths: &Paths,
+    persist: bool,
+    bitbox: Option<NoiseConfigData>,
+) -> Result<(), Box<dyn Error>> {
+    if persist {
+        if let Some(bitbox) = bitbox {
+            write_json(&paths.bitbox(), &bitbox)?;
+        }
+    }
+    Ok(())
+}
+
 fn merge_state_field(state_value: &mut Option<String>, arg_value: Option<String>) {
     if arg_value.is_some() {
         *state_value = arg_value;
@@ -528,6 +569,24 @@ where
     }
 
     Ok(serde_json::from_str(&content)?)
+}
+
+fn json_lines<T: Serialize>(value: &T) -> Result<Vec<String>, Box<dyn Error>> {
+    Ok(serde_json::to_string_pretty(value)?
+        .lines()
+        .map(str::to_string)
+        .collect())
+}
+
+async fn list_devices(
+    paths: &Paths,
+    persist: bool,
+    network: Network,
+    wallet: Option<&command::WalletResolver<'_>>,
+) -> Result<Vec<command::Device>, Box<dyn Error>> {
+    let (devices, bitbox) = command::list(network, wallet, read_bitbox(paths, persist)?).await?;
+    write_bitbox(paths, persist, bitbox)?;
+    Ok(devices)
 }
 
 fn write_json<T: Serialize + ?Sized>(path: &PathBuf, value: &T) -> Result<(), Box<dyn Error>> {

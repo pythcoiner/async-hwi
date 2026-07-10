@@ -37,6 +37,7 @@ commands=(
     "wallet"
     "wallet register"
     "wallet is-registered"
+    "bitbox"
     "persist"
     "xpub"
     "xpub get"

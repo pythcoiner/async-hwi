@@ -24,6 +24,7 @@ Commands:
   device
   psbt
   wallet
+  bitbox
   persist
   xpub
   help     Print this message or the help of the given subcommand(s)
@@ -152,6 +153,19 @@ Options:
 ```
 
 ```shell
+$ hwi bitbox -h
+Usage: hwi bitbox [OPTIONS] <COMMAND>
+
+Commands:
+  show  show bitbox pairing state
+  help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
 $ hwi persist -h
 Usage: hwi persist [OPTIONS] <COMMAND>
 
@@ -210,6 +224,8 @@ Wallet state is a JSON object keyed by fingerprint:
   }
 }
 ```
+
+BitBox02 pairing data is stored globally in `bitbox.json` because one BitBox pairing config works for all paired BitBox02 devices.
 
 ## Examples
 

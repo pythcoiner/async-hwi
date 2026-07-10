@@ -1,6 +1,6 @@
 pub mod command {
     use async_hwi::{
-        bitbox::{api::runtime, BitBox02, PairingBitbox02WithLocalCache},
+        bitbox::{api::runtime, BitBox02, NoiseConfigData, PairingBitbox02WithLocalCache},
         coldcard,
         jade::{self, Jade},
         ledger::{HidApi, Ledger, LedgerSimulator, TransportHID},
@@ -29,8 +29,10 @@ pub mod command {
     pub async fn list(
         network: Network,
         wallet: Option<&WalletResolver<'_>>,
-    ) -> Result<Vec<Device>, Box<dyn Error>> {
+        bitbox_pairing: Option<NoiseConfigData>,
+    ) -> Result<(Vec<Device>, Option<NoiseConfigData>), Box<dyn Error>> {
         let mut hws = Vec::new();
+        let mut updated_bitbox_pairing = None;
 
         if let Ok(device) = SpecterSimulator::try_connect().await {
             let fingerprint = device.get_master_fingerprint().await?;
@@ -91,11 +93,12 @@ pub mod command {
                 if let Ok(device) = device_info.open_device(&api) {
                     if let Ok(device) =
                         PairingBitbox02WithLocalCache::<runtime::TokioRuntime>::connect(
-                            device, None,
+                            device,
+                            bitbox_pairing.clone(),
                         )
                         .await
                     {
-                        if let Ok((device, _)) = device.wait_confirm().await {
+                        if let Ok((device, pairing_data)) = device.wait_confirm().await {
                             let mut bb02 = BitBox02::from(device).with_network(network);
                             let fingerprint = bb02.get_master_fingerprint().await?;
                             if let Some(wallet) =
@@ -110,6 +113,7 @@ pub mod command {
                                 kind: DeviceKind::BitBox02,
                                 handle: bb02.into(),
                             });
+                            updated_bitbox_pairing = Some(pairing_data);
                         }
                     }
                 }
@@ -169,7 +173,7 @@ pub mod command {
             }
         }
 
-        Ok(hws)
+        Ok((hws, updated_bitbox_pairing))
     }
 
     fn resolve_wallet(
