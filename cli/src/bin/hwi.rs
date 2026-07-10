@@ -14,7 +14,7 @@ use bitcoin::{
     psbt::Psbt,
     Network,
 };
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 
 const WALLET_REGISTER_ABOUT: &str = "register wallet from persisted state or --name and --policy";
@@ -54,6 +54,8 @@ enum Commands {
     Psbt(PsbtCommands),
     #[command(subcommand)]
     Wallet(WalletCommands),
+    #[command(subcommand)]
+    State(StateCommands),
     #[command(subcommand)]
     Bitbox(BitboxCommands),
     #[command(subcommand)]
@@ -150,6 +152,34 @@ enum PersistCommands {
 enum BitboxCommands {
     /// show bitbox pairing state
     Show,
+}
+
+#[derive(Debug, Subcommand)]
+enum StateCommands {
+    /// clear wallet state
+    Clear,
+    /// show wallet state
+    Show,
+    /// edit wallet state
+    Edit {
+        /// state field to edit
+        field: StateField,
+        /// field value
+        value: String,
+    },
+    /// remove wallet state field
+    Rm {
+        /// state field to remove
+        field: StateField,
+    },
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+#[clap(rename_all = "snake_case")]
+enum StateField {
+    Name,
+    Descriptor,
+    Por,
 }
 
 #[derive(Debug, Subcommand)]
@@ -337,6 +367,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Commands::Bitbox(BitboxCommands::Show) => {
             output_lines(output.as_ref(), &bitbox_pairing_lines(&paths)?)?;
         }
+        Commands::State(StateCommands::Clear) => {
+            clear_wallets(&paths)?;
+        }
+        Commands::State(StateCommands::Show) => {
+            output_lines(output.as_ref(), &wallet_state_lines(&paths)?)?;
+        }
+        Commands::State(StateCommands::Edit { field, value }) => {
+            let fingerprint =
+                resolve_state_fingerprint(&paths, persist, network, fingerprint).await?;
+            let mut wallet = read_wallet(&paths, fingerprint)?.unwrap_or_default();
+            wallet.set(field, Some(value));
+            write_wallet(&paths, true, fingerprint, &wallet)?;
+        }
+        Commands::State(StateCommands::Rm { field }) => {
+            let fingerprint =
+                resolve_state_fingerprint(&paths, persist, network, fingerprint).await?;
+            let mut wallet = read_wallet(&paths, fingerprint)?.unwrap_or_default();
+            wallet.set(field, None);
+            write_wallet(&paths, true, fingerprint, &wallet)?;
+        }
     }
     Ok(())
 }
@@ -436,6 +486,14 @@ impl WalletState {
     fn has_any(&self) -> bool {
         self.name.is_some() || self.descriptor.is_some() || self.por.is_some()
     }
+
+    fn set(&mut self, field: StateField, value: Option<String>) {
+        match field {
+            StateField::Name => self.name = value,
+            StateField::Descriptor => self.descriptor = value,
+            StateField::Por => self.por = value,
+        }
+    }
 }
 
 fn wallet_resolver(
@@ -509,6 +567,15 @@ fn write_wallet(
     let mut state: BTreeMap<String, WalletState> = read_json_or_default(&paths.state())?;
     state.insert(fingerprint.to_string(), wallet.clone());
     write_json(&paths.state(), &state)
+}
+
+fn clear_wallets(paths: &Paths) -> Result<(), Box<dyn Error>> {
+    write_json(&paths.state(), &BTreeMap::<String, WalletState>::new())
+}
+
+fn wallet_state_lines(paths: &Paths) -> Result<Vec<String>, Box<dyn Error>> {
+    let state: BTreeMap<String, WalletState> = read_json_or_default(&paths.state())?;
+    json_lines(&state)
 }
 
 fn bitbox_pairing_lines(paths: &Paths) -> Result<Vec<String>, Box<dyn Error>> {
@@ -587,6 +654,40 @@ async fn list_devices(
     let (devices, bitbox) = command::list(network, wallet, read_bitbox(paths, persist)?).await?;
     write_bitbox(paths, persist, bitbox)?;
     Ok(devices)
+}
+
+async fn resolve_state_fingerprint(
+    paths: &Paths,
+    persist: bool,
+    network: Network,
+    fingerprint: Option<Fingerprint>,
+) -> Result<Fingerprint, Box<dyn Error>> {
+    if let Some(fingerprint) = fingerprint {
+        return Ok(fingerprint);
+    }
+
+    let devices = list_devices(paths, persist, network, None).await?;
+    match devices.as_slice() {
+        [] => Err(invalid_input("no device connected")),
+        [device] => Ok(device.fingerprint),
+        _ => {
+            let mut lines = vec!["multiple devices connected, pass --fingerprint:".to_string()];
+            lines.extend(device_lines(devices).await?);
+            Err(invalid_input(lines.join("\n")))
+        }
+    }
+}
+
+async fn device_lines(mut devices: Vec<command::Device>) -> Result<Vec<String>, Box<dyn Error>> {
+    let mut lines = Vec::new();
+    for device in devices.iter_mut() {
+        let mut line = format!("{} {}", device.fingerprint, device.kind);
+        if let Ok(version) = device.handle.get_version().await.map(|v| v.to_string()) {
+            line.push_str(&format!(" {version}"));
+        }
+        lines.push(line);
+    }
+    Ok(lines)
 }
 
 fn write_json<T: Serialize + ?Sized>(path: &PathBuf, value: &T) -> Result<(), Box<dyn Error>> {

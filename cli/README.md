@@ -24,6 +24,7 @@ Commands:
   device
   psbt
   wallet
+  state
   bitbox
   persist
   xpub
@@ -159,6 +160,51 @@ Usage: hwi bitbox [OPTIONS] <COMMAND>
 Commands:
   show  show bitbox pairing state
   help  Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state -h
+Usage: hwi state [OPTIONS] <COMMAND>
+
+Commands:
+  clear  clear wallet state
+  show   show wallet state
+  edit   edit wallet state
+  rm     remove wallet state field
+  help   Print this message or the help of the given subcommand(s)
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state edit -h
+edit wallet state
+
+Usage: hwi state edit [OPTIONS] <FIELD> <VALUE>
+
+Arguments:
+  <FIELD>  state field to edit [possible values: name, descriptor, por]
+  <VALUE>  field value
+
+Options:
+  -o, --output <OUTPUT>  write command output to file instead of stdout
+  -h, --help             Print help
+```
+
+```shell
+$ hwi state rm -h
+remove wallet state field
+
+Usage: hwi state rm [OPTIONS] <FIELD>
+
+Arguments:
+  <FIELD>  state field to remove [possible values: name, descriptor, por]
 
 Options:
   -o, --output <OUTPUT>  write command output to file instead of stdout
