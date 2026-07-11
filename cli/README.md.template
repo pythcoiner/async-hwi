@@ -25,6 +25,18 @@ $ hwi persist enable
 
 On Linux, async-hwi stores state under `~/.async-hwi`. On macOS and Windows, it uses the platform config directory.
 
+Wallet state is a JSON object keyed by fingerprint:
+
+```json
+{
+  "ffd63c8d": {
+    "kind": "ledger",
+    "name": "Liana",
+    "descriptor": "wsh(...)"
+  }
+}
+```
+
 ## Examples
 
 ```shell

@@ -116,8 +116,8 @@ $ hwi wallet -h
 Usage: hwi wallet [OPTIONS] <COMMAND>
 
 Commands:
-  register
-  is-registered
+  register       register wallet from persisted state or --name and --policy
+  is-registered  check wallet registration from persisted state or wallet name and policy
   help           Print this message or the help of the given subcommand(s)
 
 Options:
@@ -127,24 +127,28 @@ Options:
 
 ```shell
 $ hwi wallet register -h
-Usage: hwi wallet register [OPTIONS] --name <NAME> --policy <POLICY>
+register wallet from persisted state or --name and --policy
+
+Usage: hwi wallet register [OPTIONS]
 
 Options:
-      --name <NAME>      wallet name
-      --policy <POLICY>  wallet policy
+  -n, --name <NAME>      wallet name
+  -p, --policy <POLICY>  wallet policy
   -o, --output <OUTPUT>  write command output to file instead of stdout
-  -h, --help             Print help
+  -h, --help             Print help (see more with '--help')
 ```
 
 ```shell
 $ hwi wallet is-registered -h
-Usage: hwi wallet is-registered [OPTIONS] --policy <POLICY>
+check wallet registration from persisted state or wallet name and policy
+
+Usage: hwi wallet is-registered [OPTIONS]
 
 Options:
-      --name <NAME>      wallet name
-      --policy <POLICY>  wallet policy
+  -n, --name <NAME>      wallet name
+  -p, --policy <POLICY>  wallet policy
   -o, --output <OUTPUT>  write command output to file instead of stdout
-  -h, --help             Print help
+  -h, --help             Print help (see more with '--help')
 ```
 
 ```shell
@@ -194,6 +198,18 @@ $ hwi persist enable
 ```
 
 On Linux, async-hwi stores state under `~/.async-hwi`. On macOS and Windows, it uses the platform config directory.
+
+Wallet state is a JSON object keyed by fingerprint:
+
+```json
+{
+  "ffd63c8d": {
+    "kind": "ledger",
+    "name": "Liana",
+    "descriptor": "wsh(...)"
+  }
+}
+```
 
 ## Examples
 

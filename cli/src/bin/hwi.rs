@@ -17,6 +17,16 @@ use bitcoin::{
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
+const WALLET_REGISTER_ABOUT: &str = "register wallet from persisted state or --name and --policy";
+const WALLET_IS_REGISTERED_ABOUT: &str =
+    "check wallet registration from persisted state or wallet name and policy";
+
+fn persist_long_about(command_help: &str) -> String {
+    format!(
+        "{command_help}. When persistence is enabled, wallet metadata is loaded by device fingerprint from the async-hwi state directory. Command arguments must match existing persisted values."
+    )
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -96,21 +106,31 @@ enum PsbtCommands {
 
 #[derive(Debug, Subcommand)]
 enum WalletCommands {
+    #[command(
+        about = WALLET_REGISTER_ABOUT,
+        long_about = persist_long_about("Register wallet from persisted state or --name and --policy")
+    )]
     Register {
         /// wallet name
-        #[arg(long)]
-        name: String,
-        /// wallet policy
-        #[arg(long)]
-        policy: String,
-    },
-    IsRegistered {
-        /// wallet name
-        #[arg(long)]
+        #[arg(short, long)]
         name: Option<String>,
         /// wallet policy
-        #[arg(long)]
-        policy: String,
+        #[arg(short, long)]
+        policy: Option<String>,
+    },
+    #[command(
+        about = WALLET_IS_REGISTERED_ABOUT,
+        long_about = persist_long_about(
+            "Check wallet registration from persisted state or wallet name and policy"
+        )
+    )]
+    IsRegistered {
+        /// wallet name
+        #[arg(short, long)]
+        name: Option<String>,
+        /// wallet policy
+        #[arg(short, long)]
+        policy: Option<String>,
     },
 }
 
@@ -152,17 +172,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             hmac,
             p2tr,
         }) => {
-            if let Some(policy) = wallet_policy {
-                for device in command::list(
-                    network,
-                    Some(command::Wallet {
-                        name: wallet_name.as_ref(),
-                        policy: Some(&policy),
-                        hmac: hmac.as_ref(),
-                    }),
-                )
-                .await?
-                {
+            let args = WalletArgs {
+                name: wallet_name,
+                descriptor: wallet_policy,
+                por: hmac,
+            };
+            let resolver = wallet_resolver(&paths, persist, args.clone());
+            if args.has_any() || (persist && p2tr.is_none()) {
+                for device in command::list(network, Some(&resolver)).await? {
                     if !matches_fingerprint(fingerprint, device.fingerprint) {
                         continue;
                     }
@@ -210,32 +227,70 @@ async fn main() -> Result<(), Box<dyn Error>> {
             output_lines(output.as_ref(), &res)?;
         }
         Commands::Wallet(WalletCommands::Register { name, policy }) => {
+            let args = WalletArgs {
+                name,
+                descriptor: policy,
+                por: None,
+            };
             let mut res = Vec::new();
             for device in command::list(network, None).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
+                let mut wallet = resolve_wallet_state(
+                    &paths,
+                    persist,
+                    device.fingerprint,
+                    &args,
+                    Some(device.kind),
+                )?
+                .ok_or_else(|| invalid_input("wallet policy is required"))?;
+                let name = wallet
+                    .name
+                    .as_ref()
+                    .ok_or_else(|| invalid_input("wallet name is required"))?;
+                let descriptor = wallet
+                    .descriptor
+                    .as_ref()
+                    .ok_or_else(|| invalid_input("wallet policy is required"))?;
 
-                if let Some(hmac) = device.handle.register_wallet(&name, &policy).await? {
-                    res.push(hex::encode(hmac));
+                if let Some(por) = device.handle.register_wallet(name, descriptor).await? {
+                    let por = hex::encode(por);
+                    merge_state_field(&mut wallet.por, Some(por.clone()));
+                    write_wallet(&paths, persist, device.fingerprint, &wallet)?;
+                    res.push(por);
+                } else {
+                    write_wallet(&paths, persist, device.fingerprint, &wallet)?;
                 }
             }
             output_lines(output.as_ref(), &res)?;
         }
         Commands::Wallet(WalletCommands::IsRegistered { name, policy }) => {
+            let args = WalletArgs {
+                name,
+                descriptor: policy,
+                por: None,
+            };
             let mut res = Vec::new();
             for device in command::list(network, None).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
-                let (name, policy) = match device.kind {
-                    DeviceKind::Ledger
-                    | DeviceKind::LedgerSimulator
-                    | DeviceKind::Coldcard
-                    | DeviceKind::Jade => (name.clone().expect("name is required"), policy.clone()),
-                    _ => ("".into(), policy.clone()),
-                };
-                let registered = device.handle.is_wallet_registered(&name, &policy).await?;
+                let wallet = resolve_wallet_state(
+                    &paths,
+                    persist,
+                    device.fingerprint,
+                    &args,
+                    Some(device.kind),
+                )?
+                .ok_or_else(|| invalid_input("wallet policy is required"))?;
+                let descriptor = wallet
+                    .descriptor
+                    .as_ref()
+                    .ok_or_else(|| invalid_input("wallet policy is required"))?;
+                let name = wallet_name_for_device(device.kind, wallet.name.as_ref())?;
+                let registered = device.handle.is_wallet_registered(name, descriptor).await?;
+                write_wallet(&paths, persist, device.fingerprint, &wallet)?;
                 res.push(registered.to_string());
             }
             output_lines(output.as_ref(), &res)?;
@@ -246,17 +301,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             wallet_policy,
             hmac,
         }) => {
+            let args = WalletArgs {
+                name: wallet_name,
+                descriptor: wallet_policy,
+                por: hmac,
+            };
+            let resolver = wallet_resolver(&paths, persist, args);
             let mut res = Vec::new();
-            for device in command::list(
-                network,
-                Some(command::Wallet {
-                    name: wallet_name.as_ref(),
-                    policy: wallet_policy.as_ref(),
-                    hmac: hmac.as_ref(),
-                }),
-            )
-            .await?
-            {
+            for device in command::list(network, Some(&resolver)).await? {
                 if !matches_fingerprint(fingerprint, device.fingerprint) {
                     continue;
                 }
@@ -340,6 +392,19 @@ fn write_config(paths: &Paths, config: Config) -> Result<(), Box<dyn Error>> {
     write_json(&paths.config(), &config)
 }
 
+#[derive(Clone, Default)]
+struct WalletArgs {
+    name: Option<String>,
+    descriptor: Option<String>,
+    por: Option<String>,
+}
+
+impl WalletArgs {
+    fn has_any(&self) -> bool {
+        self.name.is_some() || self.descriptor.is_some() || self.por.is_some()
+    }
+}
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 struct WalletState {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -355,6 +420,56 @@ struct WalletState {
 impl WalletState {
     fn has_any(&self) -> bool {
         self.name.is_some() || self.descriptor.is_some() || self.por.is_some()
+    }
+}
+
+fn wallet_resolver(
+    paths: &Paths,
+    persist: bool,
+    args: WalletArgs,
+) -> impl Fn(Fingerprint, DeviceKind) -> Result<Option<command::Wallet>, Box<dyn Error>> + use<'_> {
+    move |fingerprint, kind| {
+        resolve_wallet_state(paths, persist, fingerprint, &args, Some(kind)).map(|wallet| {
+            wallet.map(|wallet| command::Wallet {
+                name: wallet.name,
+                policy: wallet.descriptor,
+                hmac: wallet.por,
+            })
+        })
+    }
+}
+
+fn resolve_wallet_state(
+    paths: &Paths,
+    persist: bool,
+    fingerprint: Fingerprint,
+    args: &WalletArgs,
+    kind: Option<DeviceKind>,
+) -> Result<Option<WalletState>, Box<dyn Error>> {
+    if !persist && !args.has_any() {
+        return Ok(None);
+    }
+
+    let mut wallet = if persist {
+        read_wallet(paths, fingerprint)?.unwrap_or_default()
+    } else {
+        WalletState::default()
+    };
+    merge_state_field(&mut wallet.name, args.name.clone());
+    merge_state_field(&mut wallet.descriptor, args.descriptor.clone());
+    merge_state_field(&mut wallet.por, args.por.clone());
+    set_kind(&mut wallet, kind);
+
+    if persist && wallet.has_any() {
+        write_wallet(paths, persist, fingerprint, &wallet)?;
+    }
+
+    Ok(wallet.has_any().then_some(wallet))
+}
+
+fn set_kind(wallet: &mut WalletState, kind: Option<DeviceKind>) {
+    if let Some(kind) = kind {
+        wallet.kind = Some(kind.to_string());
     }
 }
 
@@ -379,6 +494,24 @@ fn write_wallet(
     let mut state: BTreeMap<String, WalletState> = read_json_or_default(&paths.state())?;
     state.insert(fingerprint.to_string(), wallet.clone());
     write_json(&paths.state(), &state)
+}
+
+fn merge_state_field(state_value: &mut Option<String>, arg_value: Option<String>) {
+    if arg_value.is_some() {
+        *state_value = arg_value;
+    }
+}
+
+fn wallet_name_for_device(kind: DeviceKind, name: Option<&String>) -> Result<&str, Box<dyn Error>> {
+    match kind {
+        DeviceKind::Ledger
+        | DeviceKind::LedgerSimulator
+        | DeviceKind::Coldcard
+        | DeviceKind::Jade => name
+            .map(String::as_str)
+            .ok_or_else(|| invalid_input("wallet name is required")),
+        DeviceKind::BitBox02 | DeviceKind::Specter | DeviceKind::SpecterSimulator => Ok(""),
+    }
 }
 
 fn read_json_or_default<T>(path: &Path) -> Result<T, Box<dyn Error>>

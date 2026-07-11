@@ -10,10 +10,11 @@ pub mod command {
     use bitcoin::{bip32::Fingerprint, hashes::hex::FromHex, Network};
     use std::error::Error;
 
-    pub struct Wallet<'a> {
-        pub name: Option<&'a String>,
-        pub policy: Option<&'a String>,
-        pub hmac: Option<&'a String>,
+    #[derive(Clone)]
+    pub struct Wallet {
+        pub name: Option<String>,
+        pub policy: Option<String>,
+        pub hmac: Option<String>,
     }
 
     pub struct Device {
@@ -22,9 +23,12 @@ pub mod command {
         pub handle: Box<dyn HWI + Send>,
     }
 
+    pub type WalletResolver<'a> =
+        dyn Fn(Fingerprint, DeviceKind) -> Result<Option<Wallet>, Box<dyn Error>> + 'a;
+
     pub async fn list(
         network: Network,
-        wallet: Option<Wallet<'_>>,
+        wallet: Option<&WalletResolver<'_>>,
     ) -> Result<Vec<Device>, Box<dyn Error>> {
         let mut hws = Vec::new();
 
@@ -93,10 +97,14 @@ pub mod command {
                     {
                         if let Ok((device, _)) = device.wait_confirm().await {
                             let mut bb02 = BitBox02::from(device).with_network(network);
-                            if let Some(policy) = wallet.as_ref().and_then(|w| w.policy) {
-                                bb02 = bb02.with_policy(policy)?;
-                            }
                             let fingerprint = bb02.get_master_fingerprint().await?;
+                            if let Some(wallet) =
+                                resolve_wallet(wallet, fingerprint, DeviceKind::BitBox02)?
+                            {
+                                if let Some(policy) = wallet.policy {
+                                    bb02 = bb02.with_policy(&policy)?;
+                                }
+                            }
                             hws.push(Device {
                                 fingerprint,
                                 kind: DeviceKind::BitBox02,
@@ -112,17 +120,14 @@ pub mod command {
                 if let Some(sn) = device_info.serial_number() {
                     if let Ok((cc, _)) = coldcard::api::Coldcard::open(&api, sn, None) {
                         let mut hw = coldcard::Coldcard::from(cc);
-                        if let Some(ref wallet) = wallet {
-                            hw = hw.with_wallet_name(
-                                wallet
-                                    .name
-                                    .ok_or::<Box<dyn Error>>(
-                                        "coldcard requires a wallet name".into(),
-                                    )?
-                                    .to_string(),
-                            );
-                        }
                         let fingerprint = hw.get_master_fingerprint().await?;
+                        if let Some(wallet) =
+                            resolve_wallet(wallet, fingerprint, DeviceKind::Coldcard)?
+                        {
+                            if let Some(name) = wallet.name {
+                                hw = hw.with_wallet_name(name);
+                            }
+                        }
                         hws.push(Device {
                             fingerprint,
                             kind: DeviceKind::Coldcard,
@@ -135,10 +140,11 @@ pub mod command {
 
         for detected in Ledger::<TransportHID>::enumerate(&api) {
             if let Ok(mut device) = Ledger::<TransportHID>::connect(&api, detected) {
-                if let Some(ref wallet) = wallet {
+                let fingerprint = device.get_master_fingerprint().await?;
+                if let Some(wallet) = resolve_wallet(wallet, fingerprint, DeviceKind::Ledger)? {
                     let hmac = if let Some(s) = wallet.hmac {
                         let mut h = [b'\0'; 32];
-                        h.copy_from_slice(&Vec::from_hex(s)?);
+                        h.copy_from_slice(&Vec::from_hex(&s)?);
                         Some(h)
                     } else {
                         None
@@ -146,14 +152,15 @@ pub mod command {
                     device = device.with_wallet(
                         wallet
                             .name
+                            .as_ref()
                             .ok_or::<Box<dyn Error>>("ledger requires a wallet name".into())?,
                         wallet
                             .policy
+                            .as_ref()
                             .ok_or::<Box<dyn Error>>("ledger requires a wallet policy".into())?,
                         hmac,
                     )?;
                 }
-                let fingerprint = device.get_master_fingerprint().await?;
                 hws.push(Device {
                     fingerprint,
                     kind: DeviceKind::Ledger,
@@ -163,5 +170,17 @@ pub mod command {
         }
 
         Ok(hws)
+    }
+
+    fn resolve_wallet(
+        wallet: Option<&WalletResolver<'_>>,
+        fingerprint: Fingerprint,
+        kind: DeviceKind,
+    ) -> Result<Option<Wallet>, Box<dyn Error>> {
+        if let Some(wallet) = wallet {
+            wallet(fingerprint, kind)
+        } else {
+            Ok(None)
+        }
     }
 }
