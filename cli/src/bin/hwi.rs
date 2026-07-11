@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     error::Error,
     ffi::OsString,
     io::{self, IsTerminal, Read},
@@ -309,6 +310,10 @@ impl Paths {
     fn config(&self) -> PathBuf {
         self.root.join("config.json")
     }
+
+    fn state(&self) -> PathBuf {
+        self.root.join("state.json")
+    }
 }
 
 fn app_dir() -> Result<PathBuf, Box<dyn Error>> {
@@ -333,6 +338,47 @@ fn read_config(paths: &Paths) -> Result<Config, Box<dyn Error>> {
 
 fn write_config(paths: &Paths, config: Config) -> Result<(), Box<dyn Error>> {
     write_json(&paths.config(), &config)
+}
+
+#[derive(Clone, Default, Deserialize, Serialize)]
+struct WalletState {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    descriptor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    por: Option<String>,
+}
+
+impl WalletState {
+    fn has_any(&self) -> bool {
+        self.name.is_some() || self.descriptor.is_some() || self.por.is_some()
+    }
+}
+
+fn read_wallet(
+    paths: &Paths,
+    fingerprint: Fingerprint,
+) -> Result<Option<WalletState>, Box<dyn Error>> {
+    let state: BTreeMap<String, WalletState> = read_json_or_default(&paths.state())?;
+    Ok(state.get(&fingerprint.to_string()).cloned())
+}
+
+fn write_wallet(
+    paths: &Paths,
+    persist: bool,
+    fingerprint: Fingerprint,
+    wallet: &WalletState,
+) -> Result<(), Box<dyn Error>> {
+    if !persist {
+        return Ok(());
+    }
+
+    let mut state: BTreeMap<String, WalletState> = read_json_or_default(&paths.state())?;
+    state.insert(fingerprint.to_string(), wallet.clone());
+    write_json(&paths.state(), &state)
 }
 
 fn read_json_or_default<T>(path: &Path) -> Result<T, Box<dyn Error>>
